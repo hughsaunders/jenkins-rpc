@@ -42,9 +42,9 @@ cleanup() {
   # Disable trap
   trap - INT TERM ERR
 
-  # Rekick the nodes in preperation for the next run.
+  # Teardown the nodes in preperation for the next run.
   [ -e playbooks ] || pushd jenkins-rpc
-  [[ $REKICK == "yes" ]] &&  ansible-playbook -i inventory/dev-sat6-lab01 -e CLUSTER_NUMBER=${EXECUTOR_NUMBER}  playbooks/dev-labs/clean.yml ||:
+  [[ $REKICK == "yes" || $CLEANUP == "yes"  ]] &&  ansible-playbook -i inventory/dev-sat6-lab01 -e CLUSTER_NUMBER=${EXECUTOR_NUMBER}  playbooks/dev-labs/clean.yml ||:
 
   # Exit
   exit $retval

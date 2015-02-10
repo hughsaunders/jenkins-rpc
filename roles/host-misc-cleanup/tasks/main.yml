@@ -1,3 +1,12 @@
 ---
 - name: Flush neighbor cache
   command: ip -s -s neigh flush all
+
+- name: Cleaning old kernel images
+  command: apt-get -y autoremove
+
+- name: Clean up lxc logs
+  file: path=/var/log/lxc state=absent
+
+- name: Prepare lxc log path
+  file: path=/var/log/lxc state=directory owner=root group=root mode=0755 
