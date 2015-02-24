@@ -25,16 +25,37 @@
   pip:
     name: turbolift
 
+- name: test if rpc_deployment dir exists
+  shell: test -f ~/{{rpc_repo_dir}}/rpc_deploy
+  register: rpc_deploy_exists
+  failed_when: false
+
+- name: set prefix
+  set_fact:
+    os_ansible_prefix: 'rpc'
+  when: rpc_deploy_exists|success
+
+- name: set prefix
+  set_fact:
+    os_ansible_prefix: 'openstack'
+  when: rpc_deploy_exists|failed
+
+
 - name: Copy rpc_deploy directory
   tags: rpc
   command: >
-    cp -a ~/{{rpc_repo_dir}}/etc/rpc_deploy ~/rpc_deploy
-    creates=~/rpc_deploy
+    cp -a ~/{{rpc_repo_dir}}/etc/{{os_ansible_prefix}}_deploy ~/{{os_ansible_prefix}}_deploy
+    creates=~/{{os_ansible_prefix}}_deploy
+
+- name: Remove swift aio config
+  file: 
+    path: ~/{{os_ansible_prefix}}_deploy/conf.d/swift.yml
+    state: absent
 
 - name: Set environment_md5 fact for template
   tags: rpc
   stat: >
-    path=~/rpc_deploy/rpc_environment.yml
+    path=~/{{os_ansible_prefix}}_deploy/{{os_ansible_prefix}}_environment.yml
   register: st
 
 - name: Set facts for template
@@ -47,17 +68,17 @@
   tags: rpc
   template: >
     src=rpc_user_config.yml
-    dest=~/rpc_deploy/rpc_user_config.yml
+    dest=~/{{os_ansible_prefix}}_deploy/{{os_ansible_prefix}}_user_config.yml
 
 - name: Render ansible.cfg template
   template:
     src: ansible.cfg.j2
-    dest: ~/{{rpc_repo_dir}}/rpc_deployment/ansible.cfg
+    dest: ~/{{rpc_repo_dir}}/playbooks/ansible.cfg
 
 - name: Generate passphrases
   tags: rpc
   command: >
-    ~/{{rpc_repo_dir}}/scripts/pw-token-gen.py --file ~/rpc_deploy/user_variables.yml
+    ~/{{rpc_repo_dir}}/scripts/pw-token-gen.py --file ~/{{os_ansible_prefix}}_deploy/user_variables.yml
 
 - name: Clear glance swift container
   tags: rpc
@@ -66,7 +87,7 @@
 - name: Set user variables
   tags: rpc
   lineinfile:
-    dest: ~/rpc_deploy/user_variables.yml
+    dest: ~/{{os_ansible_prefix}}_deploy/user_variables.yml
     regexp: "^{{item.key}}"
     line: "{{item.key}}: {{item.value}}"
   with_items:
