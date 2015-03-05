@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 
-CLUSTER_NUMBER=${CLUSTER_NUMBER:-1}
-TAGS=${TAGS:-prepare,run,test}
-TARGET_BRANCH=${TARGET_BRANCH:-master}
-GERRIT_REFSPEC=${GERRIT_REFSPEC:-refs/changes/87/139087/14}
-ANSIBLE_OPTIONS=${ANSIBLE_OPTIONS:--v}
+export CLUSTER_NUMBER=${CLUSTER_NUMBER:-1}
+export TAGS=${TAGS:-prepare,run,test}
+export TARGET_BRANCH=${TARGET_BRANCH:-master}
+export GERRIT_REFSPEC=${GERRIT_REFSPEC:-refs/changes/87/139087/14}
+export ANSIBLE_OPTIONS=${ANSIBLE_OPTIONS:--v}
+export PYTHONUNBUFFERED=1
+export ANSIBLE_FORCE_COLOR=1
 
 ansible-playbook \
   -i inventory/commit-cluster-$CLUSTER_NUMBER\
