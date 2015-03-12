@@ -1,7 +1,0 @@
-# {{ansible_managed}}
-
-auto {{item.name}}
-iface {{item.name}} inet {{item.type}}
-{% for directive in item.directives %}
-    {{directive}}
-{% endfor %}

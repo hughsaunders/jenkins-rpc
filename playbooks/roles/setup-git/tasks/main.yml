@@ -24,7 +24,7 @@
     - rpc
     - git
   git: >
-    repo=https://github.com/stackforge/os-ansible-deployment
+    repo={{rpc_repo_url}}
     dest={{rpc_repo_dir}}
 
 - name: Fetch origin
@@ -40,7 +40,7 @@
     - rpc
     - git
   command: >
-    git checkout {{branch}}
+    git checkout {{os_ansible_branch}}
     chdir={{rpc_repo_dir}}
 
 - name: Checkout target tag
@@ -57,10 +57,10 @@
     - rpc
     - git
   shell:
-    git fetch https://review.openstack.org/stackforge/os-ansible-deployment {{GERRIT_REFSPEC}}
+    git fetch https://review.openstack.org/stackforge/os-ansible-deployment {{gerrit_refspec}}
   args:
     chdir: "{{rpc_repo_dir}}"
-  when: GERRIT_REFSPEC is defined
+  when: gerrit_refspec is defined
 
 - name: Merge Review
   tags:
@@ -69,4 +69,4 @@
   command: >
     git merge FETCH_HEAD
     chdir={{rpc_repo_dir}}
-  when: GERRIT_REFSPEC is defined
+  when: gerrit_refspec is defined

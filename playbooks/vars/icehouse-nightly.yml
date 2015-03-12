@@ -1,4 +1,5 @@
 rpc_repo_dir: rpc_repo
+os_ansible_branch: icehouse
 repo_url: http://rpc-repo.rackspace.com
 razor_url: http://10.127.101.82:8080/api
 rpc_user_config:

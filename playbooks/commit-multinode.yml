@@ -69,3 +69,9 @@
   roles:
     - role: run-script-from-os-ansible-deployment
       script_name: run-tempest
+
+## --------- [ Clean up nodes] ---------------
+- hosts: all
+  tags: clean
+  roles:
+    - djeep-rekick
