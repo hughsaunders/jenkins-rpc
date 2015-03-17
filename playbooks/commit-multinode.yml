@@ -21,7 +21,8 @@
 - hosts: all
   user: root
   roles:
-    - networking
+    - role: networking
+      bring_up_interfaces: yes
   tags: prepare
 
 - hosts: all
@@ -69,3 +70,12 @@
   roles:
     - role: run-script-from-os-ansible-deployment
       script_name: run-tempest
+      script_env:
+        TEMPEST_SCRIPT_PARAMETERS: commit_aio
+
+## --------- [ Clean up nodes] ---------------
+- hosts: all
+  gather_facts: false
+  tags: clean
+  roles:
+    - djeep-rekick

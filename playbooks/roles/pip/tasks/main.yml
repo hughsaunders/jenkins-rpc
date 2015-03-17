@@ -4,14 +4,10 @@
     state: "directory"
     path: "/opt"
 
-- name: Get Modern PIP
-  get_url:
-    url: "{{ get_pip_url }}"
-    dest: "/opt/get-pip.py"
-    validate_certs: "no"
-  register: get_pip
-  until: get_pip|success
-  retries: 3
+- name: Get Modern Pip
+  shell: "for try in {1..10} :; do curl {{get_pip_url}} > /opt/get-pip.py; file /opt/get-pip.py | grep -q Python && break; sleep 30; done"
+  args:
+    executable: /bin/bash
 
 - name: Install pip
   shell: "python /opt/get-pip.py"
