@@ -74,12 +74,12 @@ ssh_command(){
   : >> /tmp/env
   scp script_env $infra_1_ip:/tmp/env
   echo "Running command ${1}"
-  ssh root@$infra_1_ip "${1}"
+  ssh root@$infra_1_ip ". /tmp/env; ${1}"
 }
 
 ssh_osad_script(){
   echo "Running script ${1} from os-ansible-deployment/scripts."
-  ssh_command ". /tmp/env; cd ~/rpc_repo; bash scripts/${1}.sh"
+  ssh_command "cd ~/rpc_repo; bash scripts/${1}.sh"
 }
 
 prepare(){
@@ -132,7 +132,7 @@ release(){
 }
 
 upgrade(){
-  ssh_command "curl $UPGRADE_SCRIPT_URL >~/rpc-repo/scripts/upgrade_script.sh; cd ~/rpc-repo; bash scripts/upgrade_script.sh"
+  ssh_command "curl $UPGRADE_SCRIPT_URL >~/rpc_repo/scripts/upgrade_script.sh; cd ~/rpc_repo; echo YES | bash scripts/upgrade_script.sh"
 }
 
 # A propterties file (Java key=value format) is produced to be read by the
