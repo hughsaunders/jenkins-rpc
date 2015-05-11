@@ -159,15 +159,20 @@ export CLUSTER_NUMBER=${CLUSTER_NAME#dev_sat6_jenkins_}
 # early as possible as cleanup will fail if the necessary info has not been written.
 write_properties CLUSTER_NAME CLUSTER_CLAIM
 
-# run the tags that are required until something breaks
+# run the tags that are required (from the $TAGS parameter) until something breaks
 rc=0
 for tag in ${TAGS}
 do
   $tag
   rc=$(( $rc + $? ))
-  # must continue to the end incase tags include cleanup or release
-  #[[ $rc -ne 0 ]] && break
+  [[ $rc -ne 0 ]] && break
   write_properties CLUSTER_NAME CLUSTER_CLAIM
+done
+
+# run tags from the list FINALLY_TAGS, these are intended to do cleanup.
+for tag in ${FINALLY_TAGS}
+do
+  $tag || break
 done
 
 exit $rc
