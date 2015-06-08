@@ -1,7 +1,32 @@
 #!/usr/bin/env bash
 
+# This script is for preparing, deploying and testing RPC/OSAD on SAT6
+# Hardware.  TAGS is a list of function that are run until completion or
+# something fails FINALLY_TAGS is a list of tags that are run after TAGS, they
+# do not affect success of the job, and execution is stopped on failure.
+
+# The idea of the tag system is to be able to have flexible jenkins jobs,
+# without complex job relationships in jenkins.
+
+# Example: Standard run: TAGS=claim prepare run test FINALLY_TAGS=clean release
+# If clean fails, release will not be run - this is good the cluster will still
+# be claimed so no more jobs will be run on the unclean cluster.
+
+# Example 2: Upgrade job: TAGS=claim prepare run test upgrade test
+#                         FINALLY_TAGS=clean release
+
+# Example 3: Take cluster out of service: TAGS=claim FINALLY_TAGS=
+# Example 4: Return cluster to pool: TAGS=clean release FINALLY_TAGS=
+
+# Example 5: Pre-clean, this delays cleanup till a cluster is next used - good
+# for inspecting results of a run, but increases time-to-result when not
+# running at capacity: TAGS=claim clean prepare run test
+#                       FINALLY_TAGS=release
+
+
 ### -------------- [ Variables ] --------------------
-TAGS=${TAGS:-prepare,run,test}
+#TAGS
+#FINALLY_TAGS
 OS_ANSIBLE_URL=${OS_ANSIBLE_URL:-https://github.com/stackforge/os-ansible-deployment}
 OS_ANSIBLE_BRANCH=${OS_ANSIBLE_BRANCH:-master}
 GERRIT_REFSPEC=${GERRIT_REFSPEC:-refs/changes/87/139087/14}
@@ -11,6 +36,8 @@ TEMPEST_SCRIPT_PARAMETERS=${TEMPEST_SCRIPT_PARAMETERS:-scenario}
 
 env
 
+# python script for interacting with djeep where json interpreation is
+# necessary
 cluster_tool(){
 python - $@ <<EOP
 import requests
@@ -19,6 +46,7 @@ import sys
 import os
 
 def cluster_for_claim(clusters, claim):
+        """ return the name of the first cluster claimed with the specified string """
         for cluster in clusters.json():
             if cluster.get('claim') == claim:
                 print(cluster['short_name'])
@@ -26,6 +54,7 @@ def cluster_for_claim(clusters, claim):
         return 1
 
 def check_release(clusters, name):
+        """ Check that the specified cluster has no claim """
         for cluster in clusters.json():
                 if cluster['short_name'] == name and cluster['claim'] == "":
                         return 0
@@ -69,6 +98,8 @@ run_jenkins_rpc_playbook_tag(){
     commit-multinode.yml
 }
 
+# Run a command on the first infra node, $PWD/script_env is scpd and sourced
+# before the command is run.
 ssh_command(){
   #Find the first node ip from the inventory
   [[ -z $infra_1_ip ]] && infra_1_ip=$(grep -o -m 1 '10.127.[0-9]\+.[0-9]\+' \
@@ -84,24 +115,29 @@ ssh_osad_script(){
   ssh_command "cd ~/rpc_repo; bash scripts/${1}.sh"
 }
 
+# Prepare cluster - this step handles all the prereqs for OSAD
 prepare(){
   run_jenkins_rpc_playbook_tag prepare
 }
 
+# Run OSAD Playbooks
 run(){
   echo "export DEPLOY_TEMPEST=yes" > script_env
   ssh_osad_script run-playbooks
 }
 
+# Run tempest
 test(){
   echo "export TEMPEST_SCRIPT_PARAMETERS=${TEMPEST_SCRIPT_PARAMETERS}" > script_env
   ssh_osad_script run-tempest
 }
 
+# Rekick cluster nodes
 clean(){
   run_jenkins_rpc_playbook_tag clean
 }
 
+# private function for attempting to claim a cluster
 _claim(){
   if [[ ! -z "$CLUSTER_NAME" ]]
   then
@@ -113,10 +149,12 @@ _claim(){
   fi
 }
 
+# Try claiming a cluster indefinitely until one is available. Store name/Number
+# in env
 claim(){
   until _claim | tee cluster | grep claimed
   do
-    sleep 5
+    sleep 120
   done
   export CLUSTER_NAME=$(awk '/claimed/{print $2}' < cluster)
   export CLUSTER_NUMBER=${CLUSTER_NAME#dev_sat6_jenkins_}
@@ -133,13 +171,13 @@ release(){
   cluster_tool check_release $CLUSTER_NAME
 }
 
+# Download and run the specified upgrade script on the first infra node
 upgrade(){
   ssh_command "curl $UPGRADE_SCRIPT_URL >~/rpc_repo/scripts/upgrade_script.sh; cd ~/rpc_repo; bash scripts/upgrade_script.sh"
 }
 
-# A propterties file (Java key=value format) is produced to be read by the
-# parent jenkins job. This is then used to inject CLUSTER_{NAME,CLAIM} into
-# the env for the cleanup job, so the correct cluster is cleaned and released
+# Produce a Java style properties file to store information that may not be
+# known before running the job (eg the cluster that is allocated)
 write_properties(){
   {
     for var in $@
@@ -151,13 +189,11 @@ write_properties(){
 
 ### -------------- [ Main ] --------------------
 
+# Strip prefix to obtain cluster number
 export CLUSTER_NUMBER=${CLUSTER_NAME#dev_sat6_jenkins_}
 
-# Write properties is called early even though claim has not run yet, as
-# CLUSTER_NAME may have been passed in. Write properties is also called after
-# each tag incase claim has run. Its important that write_properties runs as
-# early as possible as cleanup will fail if the necessary info has not been written.
-write_properties CLUSTER_NAME CLUSTER_CLAIM
+# return code
+rc=0
 
 # run the tags that are required (from the $TAGS parameter) until something breaks
 rc=0
@@ -173,4 +209,5 @@ do
   $tag || break
 done
 
+# Return code is only affected by TAGS, not FINALLY_TAGS
 exit $rc
