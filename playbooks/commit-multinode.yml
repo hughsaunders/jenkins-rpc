@@ -64,14 +64,22 @@
       script_env:
         DEPLOY_TEMPEST: "yes"
 
-## --------- [ Test with tempest ] ---------------
-- hosts: infrastructure[0]
-  tags: test
-  roles:
-    - role: run-script-from-os-ansible-deployment
-      script_name: run-tempest
-      script_env:
-        TEMPEST_SCRIPT_PARAMETERS: commit_aio
+## --------- [ Retrieve tempest report ] ---------------
+
+# The results file cannot be retrieved directly from the utility container as
+# the jenkins-rpc inventory does not include containers.
+# osad/scripts/run-tempest.sh copies tempest_results from the utility container
+# to /tmp on the host.  This play copies tempest_results from the deployment
+# host to the jenkins workspace.
+- hosts: infrastructure
+  tags: get_tempest_report
+  tasks:
+    - name: Get tempest results report
+      fetch:
+        src: /tmp/tempest_results.xml
+        dest: results/
+        flat: yes
+        fail_on_missing: no
 
 ## --------- [ Clean up nodes] ---------------
 - hosts: all

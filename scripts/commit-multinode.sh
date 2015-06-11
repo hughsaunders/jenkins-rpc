@@ -69,10 +69,14 @@ run_jenkins_rpc_playbook_tag(){
     commit-multinode.yml
 }
 
-ssh_command(){
+get_infra_1_ip(){
   #Find the first node ip from the inventory
-  [[ -z $infra_1_ip ]] && infra_1_ip=$(grep -o -m 1 '10.127.[0-9]\+.[0-9]\+' \
-                          < inventory/commit-cluster-$CLUSTER_NUMBER)
+  grep -o -m 1 '10.127.[0-9]\+.[0-9]\+' \
+    < inventory/commit-cluster-$CLUSTER_NUMBER
+}
+
+ssh_command(){
+  infra_1_ip=$(get_infra_1_ip)
   : >> /tmp/env
   scp script_env $infra_1_ip:/tmp/env
   echo "Running command ${1}"
@@ -96,6 +100,9 @@ run(){
 test(){
   echo "export TEMPEST_SCRIPT_PARAMETERS=${TEMPEST_SCRIPT_PARAMETERS}" > script_env
   ssh_osad_script run-tempest
+
+  # Get junit xml results from tempest so they can be interpreted by jenkins
+  run_jenkins_rpc_playbook_tag get_tempest_report
 }
 
 clean(){
@@ -148,6 +155,7 @@ write_properties(){
     done
   } > properties
 }
+
 
 ### -------------- [ Main ] --------------------
 
