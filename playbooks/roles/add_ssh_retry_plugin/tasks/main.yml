@@ -1,0 +1,29 @@
+---
+- name: Create connection_plugins directory
+  file:
+    path: "{{ rpc_repo_dir }}/playbooks/plugins/connection_plugins"
+    state: directory
+
+- name: Drop ssh_retry ansible connection plugin
+  copy:
+    src: ssh_retry.py
+    dest: "{{ rpc_repo_dir }}/playbooks/plugins/connection_plugins/ssh_retry.py"
+
+- name: Enable ssh_retry in ansible configuration
+  lineinfile:
+    line: "{{ item.string }}"
+    insertafter: "{{ item.after }}"
+    dest: "{{ rpc_repo_dir }}/playbooks/ansible.cfg"
+  with_items:
+    - string: "connection_plugins = plugins/connection_plugins"
+      after: "\\[defaults\\]"
+
+    - string: "transport = ssh_retry"
+      after: "\\[defaults\\]"
+
+    - string: "[ssh_retry]"
+      after: "EOF"
+
+    - string: "retries = 3"
+      after: "\\[ssh_retry\\]"
+

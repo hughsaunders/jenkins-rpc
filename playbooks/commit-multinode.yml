@@ -40,6 +40,7 @@
   roles:
     - configure-rpc-swift-lvs
     - setup-git
+    - add_ssh_retry_plugin
 
 - hosts: infrastructure[0]
   tags: prepare
