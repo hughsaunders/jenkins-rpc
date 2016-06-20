@@ -1,0 +1,6 @@
+BUILD_TAG: "{{ lookup('env', 'BUILD_TAG') }}"
+rax_image: "Ubuntu 14.04 LTS (Trusty Tahr) (PVHVM)"
+rax_flavor: "performance2-15"
+rax_creds: "/home/hugh/.pyrax.creds"
+rax_region: "LON"
+rax_keyname: "hughsaunderspersonal"

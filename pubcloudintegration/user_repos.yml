@@ -1,0 +1,12 @@
+## Nova service
+nova_git_repo: "https://github.rackspace.com/O3Eng/nova"
+nova_git_install_branch: ply-devlopment
+
+glance_git_repo: "https://github.rackspace.com/O3Eng/glance"
+glance_git_install_branch: ply-development
+
+keystone_git_repo: "https://github.rackspace.com/O3Eng/keystone"
+keystone_git_install_branch: ply-development
+
+neutron_git_repo: "https://github.rackspace.com/O3Eng/neutron"
+neutron_git_install_branch: ply-development

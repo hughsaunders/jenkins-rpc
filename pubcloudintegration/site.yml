@@ -1,0 +1,109 @@
+---
+- name: Prepare
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  max_fail_percentage: 100
+  tasks:
+    - name: Provision an instance
+      local_action:
+          module: rax
+          credentials: "{{ rax_creds }}"
+          region: "{{ rax_region }}"
+          key_name: "{{ rax_keyname }}"
+          name: "{{ BUILD_TAG }}"
+          flavor: "{{ rax_flavor }}"
+          image: "{{ rax_image }}"
+          count: 1
+          auto_increment: false
+          exact_count: true
+          group: "{{ BUILD_TAG }}"
+          wait: yes
+      register: rax
+
+    - name: Wait for instance SSH
+      wait_for:
+        host: "{{ item.rax_accessipv4 }}"
+        port: 22
+        search_regex: "OpenSSH"
+      with_items: rax.instances
+
+    - name: Add instance to ansible inventory (in memory)
+      local_action:
+          module: add_host
+          hostname: "{{ item.name }}"
+          ansible_ssh_host: "{{ item.rax_accessipv4 }}"
+          #ansible_ssh_pass: "{{ item.rax_adminpass }}"
+          ansible_ssh_user: "root"
+          groups: BUILD_TAG
+      with_items: rax.instances
+      # Used to ensure that localhost isn't marked as failed, which may prevent
+      # the cleanup play from running
+      failed_when: False
+
+    - name: debug rax obj
+      debug:
+        var: rax
+
+    - name: write out rax obj
+      copy:
+        content: "{{ rax|to_nice_json }}"
+        dest: /tmp/rax
+
+#    - name: Write instance id to file
+#      copy:
+#        content: "id:{{rax.success[0].rax_id}}"
+#        dest: "/tmp/pcit_instance_id"
+
+- name: Build
+  hosts: "{{ BUILD_TAG }}"
+  tasks:
+    - name: Install deps
+      apt:
+        name: git
+        update_cache: yes
+
+    - name: Create /etc/openstack_deploy
+      file:
+        path: /etc/openstack_deploy
+        state: directory
+
+    - name: Drop repo location overrides
+      template:
+        src: user_repos.yml
+        dest: /etc/openstack_deploy/user_repos.yml
+
+    - name: Checkout OSA
+      git:
+        repo: "http://github.com/openstack/openstack-ansible"
+        recursive: true
+        force: yes
+        dest: /opt/openstack-ansible
+
+    - name: Run Gate-Check-Commit
+      shell: "scripts/gate-check-commit.sh 2>&1 > /var/log/gate_check_commit.log"
+      args:
+        chdir: /opt/openstack-ansible
+
+- name: Cleanup
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  tasks:
+    - name: Clean up instance
+      local_action:
+          credentials: "{{ rax_creds }}"
+          region: "{{ rax_region }}"
+          flavor: "{{ rax_flavor }}"
+          image: "{{ rax_image }}"
+          module: rax
+          name: "{{ item.name }}"
+          group: "{{ BUILD_TAG }}"
+          state: "absent"
+      with_items: rax.instances
+      when: item.name == 'non_jenkins_test'
+
+    - name: Remove instance id file
+      file:
+        state: absent
+        path: /tmp/pcit_instance_id
