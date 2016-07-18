@@ -1,4 +1,4 @@
-## Macros for repeated blocks
+# Macros for repeated blocks
 
 # Define the github project associated with jenkins rpc
 - property:
@@ -6,6 +6,11 @@
     properties:
       - github:
           url: https://github.com/rcbops/jenkins-rpc
+- property:
+    name: rpc-openstack-github
+    properties:
+      - github:
+          url: https://github.com/rcbops/rpc-openstack
 
 # Define the scm/git repo associated with jenkins-rpc
 - scm:
@@ -17,6 +22,42 @@
             - master
           refspec: "+refs/pull/*:refs/remotes/origin/pr/* +refs/heads/*:refs/remotes/origin/*"
           name: origin
+- scm:
+    name: rpc-openstack-git
+    scm:
+      - git:
+          url: https://github.com/rcbops/rpc-openstack
+          branches:
+            - master
+          refspec: "+refs/pull/*:refs/remotes/origin/pr/* +refs/heads/*:refs/remotes/origin/*"
+          name: origin
+
+- parameter:
+    name: pr-params
+    parameters:
+      - string:
+          name: ghprbActualCommit
+      - string:
+          name: ghprbAuthorRepoGitUrl
+      - string:
+          name: ghprbGhRepository
+      - string:
+          name: ghprbSourceBranch
+      - string:
+          name: ghprbTargetBranch
+          default: master
+          description: |
+            Target branch - the branch to be tested (sha1 param) will
+            be rebased against this. Also overridden by github pull request builder plugin.
+      - string:
+          name: sha1
+          default: master
+          description: |
+              rpc-openstack git ref that points to the code to be tested
+              (sha/tag/branch/etc).
+              This is overridden by the github pull request builder plugin
+      - string:
+          name: GIT_BRANCH
 
 # This project instantiates the JJB-Jenkins-RPC-PR-{type} template twice
 # to create an aio and an upgrade job.
@@ -30,10 +71,184 @@
           type: aio
           upgrade: no
 
+- project:
+    name: 'JJB-AIO-Jobs'
+    jobs:
+      - 'JJB-RPC-AIO-{context}':
+          context: swift
+          branches: "donotbuild"
+      - 'JJB-RPC-AIO-{context}':
+          context: upgrade
+          branches: "donotbuild"
+          DEPLOY_CEPH: no
+          DEPLOY_SWIFT: yes
+          UPGRADE: yes
+          TEMPEST_TESTS: scenario defcore
+          UPGRADE_TYPE: major
+          UPGRADE_FROM_REF: origin/kilo
+
+      - 'JJB-RPC-AIO-{context}':
+          context: ceph
+          branches: "donotbuild"
+          DEPLOY_CEPH: yes
+          USER_VARS: |
+            cinder_cinder_conf_overrides:
+                DEFAULT:
+                    default_volume_type: ceph
+            cinder_service_backup_driver: cinder.backup.drivers.ceph
+            cinder_service_backup_program_enabled: true
+
 ## Job Definitions
 # This template is for testing PRs against Jenkins-RPC
 # It is triggered by PR and runs an AIO with the proposed version
 # of jenkins-rpc.
+#
+
+- job-template:
+    # defaults
+    RPC_REPO: https://github.com/rcbops/rpc-openstack
+    TEMPEST_TESTS: scenario heat_api cinder_backup defcore
+    DEPLOY_CEPH: no
+    DEPLOY_SWIFT: yes
+    USER_VARS: ""
+    UPGRADE: no
+    UPGRADE_FROM_REF: origin/kilo
+    UPGRADE_FROM_NEAREST_TAG: "yes"
+    DEPLOY_MAAS: yes
+    JENKINS_RPC_REPO: https://github.com/rcbops/jenkins-rpc
+    JENKINS_RPC_BRANCH: master
+    BUILD_SCRIPT_PATH: scripts/aio_build_script.sh
+    OA_REPO: none
+    OA_BRANCH: ""
+    branches: master
+    skip_doc_only: yes
+
+    name: 'JJB-RPC-AIO-{context}'
+    project-type: freestyle
+    node: rpcaio
+    defaults: global
+    disabled: false
+    concurrent: true
+    logrotate:
+      daysToKeep: 30
+    parameters:
+      - pr-params
+    properties:
+      # Pass JJB macro vars into the job env
+      - inject:
+          properties-content: |
+            RPC_REPO={RPC_REPO}
+            TEMPEST_TESTS={TEMPEST_TESTS}
+            DEPLOY_CEPH={DEPLOY_CEPH}
+            DEPLOY_SWIFT={DEPLOY_SWIFT}
+            USER_VARS={USER_VARS}
+            UPGRADE={UPGRADE}
+            UPGRADE_FROM_REF={UPGRADE_FROM_REF}
+            UPGRADE_FROM_NEAREST_TAG={UPGRADE_FROM_NEAREST_TAG}
+            DEPLOY_MAAS={DEPLOY_MAAS}
+            JENKINS_RPC_REPO={JENKINS_RPC_REPO}
+            JENKINS_RPC_BRANCH={JENKINS_RPC_BRANCH}
+            BUILD_SCRIPT_PATH={BUILD_SCRIPT_PATH}
+            OA_REPO={OA_REPO}
+            OA_BRANCH={OA_BRANCH}
+      - rpc-openstack-github
+    triggers:
+      - github-pull-request:
+          org-list:
+            - rcbops
+          github-hooks: true
+          trigger-phrase: '.*recheck_all.*|.*recheck_{context}.*'
+          only-trigger-phrase: true
+          white-list-target-branches:
+            - "{branches}"
+          auth-id: "8b635975-7d59-45f8-b7ee-8bceb2e44ba3"
+          status-context: '{context}'
+    scm:
+      - git:
+          url: "{RPC_REPO}"
+          branches:
+            - "${{sha1}}"
+          refspec: "+refs/pull/*:refs/remotes/origin/pr/* +refs/heads/*:refs/remotes/origin/*"
+          name: origin
+    builders:
+      - shell: |
+          #!/bin/bash -x
+          # Skip build if only doc changes are detected.
+          #long stat widths specified to ensure paths aren't truncated
+          if [[ "{skip_doc_only}" == "yes" ]]; then
+            git show --stat=400,400 $sha1 |awk '/\|/{{print $1}}' |egrep -v '*.md$' \
+                || {{ echo "Skipping AIO build as no non-doc changes were detected"
+                    exit 0
+            }}
+          fi
+          # Single use slave requires clone each time
+          git clone $JENKINS_RPC_REPO buildscript_repo
+          pushd buildscript_repo
+          git fetch origin "+refs/pull/*:refs/remotes/origin/pr/*"
+          git checkout $JENKINS_RPC_BRANCH
+          popd
+          sudo -E ./buildscript_repo/$BUILD_SCRIPT_PATH
+      - shell: |
+          #!/usr/bin/sudo /bin/bash
+          set +e
+          set -x
+
+          echo "****** Copy Logs To Jenkins Workspace For Archival *******"
+
+          #copy logs into jenkins workspace so they can be archived with the results
+          mkdir -p archive
+          cp -rL /openstack/log archive/openstack
+          cp -rL /var/log archive/local
+
+          # collect openstack etc dirs from containers
+          find /var/lib/lxc/*/rootfs/etc/ -name policy.json -o -name swift.conf \
+            |while read policy; do \
+            src=$(dirname $policy); \
+            service=$(basename $src); \
+            container=$(cut -d/ -f 5 <<<$src); \
+            mkdir -p archive/etc/$container/; cp -r $src/ archive/etc/$container/;  done
+
+          # collect openstack etc dirs from host
+          find /etc -name policy.json -o -name swift.conf\
+            |while read policy; do \
+            src=$(dirname $policy); \
+            mkdir -p archive/etc; cp -r $src/ archive/etc/;  done
+
+          # Collect Rabbit & Mysql configs
+          # Copy from all containers to one dir, don't care that it will get overridden
+          # should be the same anyway.
+          cp -r /var/lib/lxc/*rabbit*/rootfs/etc/rabbitmq archive/etc/
+          cp -r /var/lib/lxc/*galera*/rootfs/etc/mysql archive/etc/
+
+          # Collect MAAS agent config
+          cp -r /etc/rackspace-monitoring-agent.conf.d archive/etc/
+          cp /etc/rackspace-monitoring-agent.cfg archive/etc/
+
+          # Jenkins user must be able to read all files to archive and transfer to
+          # the master. Unreadable files will cause the whole archive operation to fail
+          chown -R jenkins archive
+
+          # remove dangling/circular symlinks
+          find archive -type l -exec test ! -e {{}} \; -delete
+
+          # delete anything that isn't a file or directory - pipes, specials etc
+          find archive ! -type d  ! -type f -delete
+
+          # delete anything not readable by the jenkins user
+          find archive \
+            |while read f; \
+            do sudo -u jenkins [ -r $f ] || {{ echo $f; rm -rf $f; }}; done
+
+          #don't return non-zero, ever.
+          :
+    publishers:
+      # archive artifacts - these are files (logs) that are transferred to the
+      # jenkins master and are available after the build has completed
+      - archive:
+          artifacts: "archive/**/*"
+      # Publish tempest results to the Jenkins UI
+      - junit:
+          results: "archive/openstack/*_utility_*/*.xml"
 
 # This template has two variables - type and upgrade.
 - job-template:
@@ -72,6 +287,7 @@
             sha1=liberty-12.2
             ghprbTargetBranch=liberty-12.2
 
+
 # Update Jenkins Jobs.
 # This job runs after changes are merged to jenkins-rpc.
 # Jobs defined in this file will be updated to match
@@ -95,3 +311,38 @@
       - github # triggered post merge, not on PR
     builders:
       - shell: scripts/run_jjb.sh
+
+
+- job:
+    name: JJB-Job-Test
+    project-type: freestyle
+    description: "Test JJB job defintions for syntax"
+    disabled: false
+    concurrent: false
+    node: master
+    logrotate:
+      daysToKeep: 30
+    properties:
+      - jenkins-rpc-github
+    parameters:
+      - pr-params
+    scm:
+      - git:
+          url: https://github.com/rcbops/jenkins-rpc
+          branches:
+            - "${sha1}"
+          refspec: "+refs/pull/*:refs/remotes/origin/pr/* +refs/heads/*:refs/remotes/origin/*"
+          name: origin
+    triggers:
+      - github-pull-request:
+          org-list:
+            - rcbops
+          github-hooks: true
+          trigger-phrase: '.*recheck_all.*|.*recheck_jjb.*'
+          only-trigger-phrase: false
+          white-list-target-branches:
+            - "master"
+          auth-id: "8b635975-7d59-45f8-b7ee-8bceb2e44ba3"
+          status-context: 'JJB-Test'
+    builders:
+      - shell: scripts/run_jjb.sh test

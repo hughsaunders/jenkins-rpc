@@ -6,6 +6,7 @@ set -o pipefail # fail even if later tasks in a pipeline would succeed
 
 # Useful for getting real time feedback from ansible playbook runs
 export PYTHONUNBUFFERED=1
+. /opt/jenkins/creds/aio_maas.creds
 env > buildenv
 
 log_git_status(){
