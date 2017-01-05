@@ -1,0 +1,45 @@
+---
+
+- job-template:
+    name: "JJB-Experiment-{series}-{context}-{ztrigger}"
+    project-type: freestyle
+    description: 'Managed by JJB: Misc'
+    defaults: global
+    disabled: false
+    concurrent: false
+    node: master
+    logrotate:
+      numToKeep: 50
+    builders:
+      - shell: |
+          {shell}
+          echo {branches}
+
+- project:
+    name: 'JJB-Experimental-Jobs'
+    series:
+      - mitaka:
+          branch: mitaka-13.1
+          branches: "mitaka-.*"
+      - master:
+          branch: master
+          branches: "master"
+    context:
+      - swift
+      - ceph:
+          DEPLOY_CEPH: "yes"
+          USER_VARS: |
+            cinder_cinder_conf_overrides:
+                DEFAULT:
+                    default_volume_type: ceph
+            cinder_service_backup_driver: cinder.backup.drivers.ceph
+            cinder_service_backup_program_enabled: true
+    ztrigger:
+      - pr:
+          CRON: ""
+      - periodic:
+          branches: "do_not_build_on_pr"
+
+    jobs:
+      - 'JJB-Experiment-{series}-{context}-{ztrigger}':
+          shell: hostname
